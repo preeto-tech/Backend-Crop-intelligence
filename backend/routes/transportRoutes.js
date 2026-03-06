@@ -1,8 +1,9 @@
 const express = require("express");
 const router = express.Router();
+const { protect } = require("../middleware/auth");
 
 // Book a transport request
-router.post("/book", async (req, res) => {
+router.post("/book", protect, async (req, res) => {
   try {
     const {
       farmerName,
@@ -13,8 +14,7 @@ router.post("/book", async (req, res) => {
       preferredDate
     } = req.body;
 
-    // Optional: Only use req.user if it exists (for backward compatibility or testing)
-    const userId = req.user ? req.user._id : "mocked_user_id";
+    const userId = req.user._id;
 
     // For now, let's return a success message and the data back
     res.status(201).json({
