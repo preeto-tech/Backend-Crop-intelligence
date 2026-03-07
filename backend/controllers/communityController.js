@@ -19,7 +19,7 @@ const {
 const { generateAIExpertAnswer } = require('./aiService');
 
 // ── Helper ────────────────────────────────────────────────────────────────────
-const isExpertUser = (user) => user.role === 'admin';
+const isExpertUser = (user) => user && (user.role === 'admin' || user.role === 'expert');
 
 // ════════════════════════════════════════════════════════════════════════════
 //  QUESTIONS
@@ -89,7 +89,7 @@ exports.getPostById = async (req, res) => {
 // POST /api/community
 exports.createPost = async (req, res) => {
     try {
-        const { title, body, category, tags, cropId, cropName } = req.body;
+        const { title, body, category, tags, cropId, cropName, image } = req.body;
         if (!title || !body) return res.status(400).json({ message: 'Title and body are required' });
 
         const newPost = {
@@ -99,8 +99,10 @@ exports.createPost = async (req, res) => {
             cropId: cropId ? Number(cropId) : null,
             cropName: cropName || '',
             tags: tags ? tags.map(t => t.toLowerCase()) : [],
+            image: image || null, // Base64 image string
             author: req.user.name,
             authorId: req.user.id,
+            authorLocation: req.user.location || 'Unknown',
             upvotes: 0,
             upvotedBy: [],
             views: 0,
@@ -217,9 +219,16 @@ exports.addAnswer = async (req, res) => {
             createdAt: new Date().toISOString()
         };
 
-        await updateDoc(postRef, {
+        const updateData = {
             answers: arrayUnion(answer)
-        });
+        };
+
+        if (answer.isExpert) {
+            updateData.answered = true;
+            updateData.expertAnswered = true;
+        }
+
+        await updateDoc(postRef, updateData);
 
         res.status(201).json(answer);
     } catch (err) {

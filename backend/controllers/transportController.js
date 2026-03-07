@@ -11,13 +11,6 @@ const {
     orderBy
 } = require('firebase/firestore');
 
-const mockDrivers = [
-    { driverName: 'Ramesh Kumar', vehicleNumber: 'MH-12-AB-4521', eta: '2 hours' },
-    { driverName: 'Suresh Patil', vehicleNumber: 'MH-09-CD-7832', eta: '3 hours' },
-    { driverName: 'Vijay Singh', vehicleNumber: 'MH-15-EF-1234', eta: '1.5 hours' },
-    { driverName: 'Anand Sharma', vehicleNumber: 'MH-04-GH-9876', eta: '2.5 hours' },
-];
-
 // POST /api/transport — submit new request
 const submitRequest = async (req, res) => {
     try {
@@ -76,12 +69,23 @@ const acceptRequest = async (req, res) => {
         const requestSnap = await getDoc(requestRef);
         if (!requestSnap.exists()) return res.status(404).json({ message: 'Request not found' });
 
-        const driver = mockDrivers[Math.floor(Math.random() * mockDrivers.length)];
+        // Find an available vehicle for this transporter (req.user)
+        const q = query(
+            collection(db, 'vehicles'),
+            where('userId', '==', req.user.id)
+        );
+        const vSnap = await getDocs(q);
+        if (vSnap.empty) return res.status(400).json({ message: 'You must add a vehicle first' });
+
+        const vehicle = vSnap.docs[0].data();
+
         const updateData = {
             status: 'Accepted',
-            driverName: driver.driverName,
-            vehicleNumber: driver.vehicleNumber,
-            eta: driver.eta
+            driverId: req.user.id,
+            driverName: req.user.name,
+            vehicleNumber: vehicle.vehicleNumber,
+            vehicleType: vehicle.type,
+            acceptedAt: new Date().toISOString()
         };
 
         await updateDoc(requestRef, updateData);
@@ -105,5 +109,29 @@ const rejectRequest = async (req, res) => {
     }
 };
 
-module.exports = { submitRequest, getMyRequests, getAllRequests, acceptRequest, rejectRequest };
+
+// GET /api/transport/nearby-vehicles
+const getNearbyVehicles = async (req, res) => {
+    try {
+        const { location } = req.query;
+        let q;
+        if (location) {
+            q = query(
+                collection(db, 'vehicles'),
+                where('currentLocation', '==', location)
+            );
+        } else {
+            q = query(collection(db, 'vehicles'), orderBy('createdAt', 'desc'));
+        }
+
+        const querySnapshot = await getDocs(q);
+        const vehicles = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        res.json(vehicles);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+};
+
+module.exports = { submitRequest, getMyRequests, getAllRequests, acceptRequest, rejectRequest, getNearbyVehicles };
+
 

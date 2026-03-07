@@ -9,6 +9,18 @@ const protect = async (req, res, next) => {
             token = req.headers.authorization.split(' ')[1];
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
+            const expertId = 'expert-hardcoded-id';
+            if (decoded.id === expertId) {
+                req.user = {
+                    id: expertId,
+                    name: 'Agri Expert',
+                    email: 'expert@agrimail.com',
+                    role: 'expert',
+                    location: 'System Center'
+                };
+                return next();
+            }
+
             const userRef = doc(db, 'users', decoded.id);
             const userSnap = await getDoc(userRef);
 

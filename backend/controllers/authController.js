@@ -10,7 +10,7 @@ const generateToken = (id) => {
 // @POST /api/auth/signup
 const signup = async (req, res) => {
     try {
-        const { name, email, password, role } = req.body;
+        const { name, email, password, role, location, phone } = req.body;
 
         // Check if user exists
         const usersRef = collection(db, 'users');
@@ -30,16 +30,22 @@ const signup = async (req, res) => {
             email: email.toLowerCase(),
             password: hashedPassword,
             role: role || 'farmer',
+            location: location || '',
+            phone: phone || '',
             createdAt: new Date().toISOString()
         };
 
         const docRef = await addDoc(usersRef, newUser);
 
         res.status(201).json({
-            _id: docRef.id,
-            name,
-            email,
-            role: newUser.role,
+            user: {
+                _id: docRef.id,
+                name,
+                email,
+                role: newUser.role,
+                location: newUser.location,
+                phone: newUser.phone,
+            },
             token: generateToken(docRef.id),
         });
     } catch (err) {
@@ -51,6 +57,21 @@ const signup = async (req, res) => {
 const login = async (req, res) => {
     try {
         const { email, password } = req.body;
+
+        // Hardcoded Expert Login
+        if (email.toLowerCase() === 'expert@agrimail.com' && password === 'password123') {
+            const expertId = 'expert-hardcoded-id';
+            return res.json({
+                user: {
+                    _id: expertId,
+                    name: 'Agri Expert',
+                    email: 'expert@agrimail.com',
+                    role: 'expert',
+                    location: 'System Center',
+                },
+                token: generateToken(expertId),
+            });
+        }
 
         const usersRef = collection(db, 'users');
         const q = query(usersRef, where('email', '==', email.toLowerCase()));
@@ -70,10 +91,14 @@ const login = async (req, res) => {
         }
 
         res.json({
-            _id: userDoc.id,
-            name: userData.name,
-            email: userData.email,
-            role: userData.role,
+            user: {
+                _id: userDoc.id,
+                name: userData.name,
+                email: userData.email,
+                role: userData.role,
+                location: userData.location || '',
+                phone: userData.phone || '',
+            },
             token: generateToken(userDoc.id),
         });
     } catch (err) {
@@ -85,6 +110,16 @@ const login = async (req, res) => {
 // @access Private
 const getUserProfile = async (req, res) => {
     try {
+        const expertId = 'expert-hardcoded-id';
+        if (req.user.id === expertId) {
+            return res.json({
+                _id: expertId,
+                name: 'Agri Expert',
+                email: 'expert@agrimail.com',
+                role: 'expert',
+                location: 'System Center'
+            });
+        }
         const userRef = doc(db, 'users', req.user.id);
         const userSnap = await getDoc(userRef);
 
@@ -95,6 +130,8 @@ const getUserProfile = async (req, res) => {
                 name: userData.name,
                 email: userData.email,
                 role: userData.role,
+                location: userData.location || '',
+                phone: userData.phone || '',
             });
         } else {
             res.status(404).json({ message: 'User not found' });
