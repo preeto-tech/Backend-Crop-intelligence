@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
+const { db } = require('../config/firebase');
+const { doc, getDoc } = require('firebase/firestore');
 
 const protect = async (req, res, next) => {
     let token;
@@ -7,7 +8,18 @@ const protect = async (req, res, next) => {
         try {
             token = req.headers.authorization.split(' ')[1];
             const decoded = jwt.verify(token, process.env.JWT_SECRET);
-            req.user = await User.findById(decoded.id).select('-password');
+
+            const userRef = doc(db, 'users', decoded.id);
+            const userSnap = await getDoc(userRef);
+
+            if (!userSnap.exists()) {
+                return res.status(401).json({ message: 'User not found' });
+            }
+
+            const userData = userSnap.data();
+            req.user = { id: userSnap.id, ...userData };
+            delete req.user.password;
+
             next();
         } catch (error) {
             return res.status(401).json({ message: 'Not authorized, token failed' });
@@ -22,3 +34,4 @@ const adminOnly = (req, res, next) => {
 };
 
 module.exports = { protect, adminOnly };
+

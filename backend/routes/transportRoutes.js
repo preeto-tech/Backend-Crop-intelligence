@@ -1,41 +1,19 @@
 const express = require("express");
 const router = express.Router();
 const { protect } = require("../middleware/auth");
+const { submitRequest, getMyRequests, getAllRequests, acceptRequest, rejectRequest } = require("../controllers/transportController");
 
 // Book a transport request
-router.post("/book", protect, async (req, res) => {
-  try {
-    const {
-      farmerName,
-      crop,
-      quantity,
-      pickupLocation,
-      phone,
-      preferredDate
-    } = req.body;
+router.post("/book", protect, submitRequest);
 
-    const userId = req.user._id;
+// Get my requests
+router.get("/my", protect, getMyRequests);
 
-    // For now, let's return a success message and the data back
-    res.status(201).json({
-      message: "Transport request created successfully! 🚛",
-      request: {
-        farmerName,
-        crop,
-        quantity,
-        pickupLocation,
-        phone,
-        preferredDate,
-        userId
-      }
-    });
+// Admin: Get all requests
+router.get("/all", protect, getAllRequests);
 
-  } catch (error) {
-    res.status(500).json({
-      message: "Booking failed",
-      error: error.message
-    });
-  }
-});
+// Admin: Accept/Reject
+router.patch("/:id/accept", protect, acceptRequest);
+router.patch("/:id/reject", protect, rejectRequest);
 
 module.exports = router;

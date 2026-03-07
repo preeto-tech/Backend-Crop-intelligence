@@ -1,10 +1,12 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
-const connectDB = require('./config/db');
+// const connectDB = require('./config/db'); // Removed for Firestore
+
 
 dotenv.config();
-connectDB();
+// Firebase initialized in config/firebase.js and used in controllers
+
 
 const app = express();
 app.use(cors({

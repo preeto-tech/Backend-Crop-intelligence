@@ -1,4 +1,15 @@
-const TransportRequest = require('../models/TransportRequest');
+const { db } = require('../config/firebase');
+const {
+    collection,
+    query,
+    where,
+    getDocs,
+    addDoc,
+    doc,
+    getDoc,
+    updateDoc,
+    orderBy
+} = require('firebase/firestore');
 
 const mockDrivers = [
     { driverName: 'Ramesh Kumar', vehicleNumber: 'MH-12-AB-4521', eta: '2 hours' },
@@ -11,12 +22,20 @@ const mockDrivers = [
 const submitRequest = async (req, res) => {
     try {
         const { farmerName, crop, quantity, pickupLocation, phone, preferredDate } = req.body;
-        const request = await TransportRequest.create({
-            farmerName, crop, quantity, pickupLocation, phone, preferredDate,
-            userId: req.user._id,
+        const newRequest = {
+            farmerName,
+            crop,
+            quantity,
+            pickupLocation,
+            phone,
+            preferredDate,
+            userId: req.user.id,
             status: 'Pending',
-        });
-        res.status(201).json(request);
+            createdAt: new Date().toISOString()
+        };
+
+        const docRef = await addDoc(collection(db, 'transportRequests'), newRequest);
+        res.status(201).json({ id: docRef.id, ...newRequest });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -25,7 +44,13 @@ const submitRequest = async (req, res) => {
 // GET /api/transport/my — farmer's own requests
 const getMyRequests = async (req, res) => {
     try {
-        const requests = await TransportRequest.find({ userId: req.user._id }).sort({ createdAt: -1 });
+        const q = query(
+            collection(db, 'transportRequests'),
+            where('userId', '==', req.user.id),
+            orderBy('createdAt', 'desc')
+        );
+        const querySnapshot = await getDocs(q);
+        const requests = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         res.json(requests);
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -35,7 +60,9 @@ const getMyRequests = async (req, res) => {
 // GET /api/transport/all — admin all requests
 const getAllRequests = async (req, res) => {
     try {
-        const requests = await TransportRequest.find().sort({ createdAt: -1 });
+        const q = query(collection(db, 'transportRequests'), orderBy('createdAt', 'desc'));
+        const querySnapshot = await getDocs(q);
+        const requests = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         res.json(requests);
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -45,15 +72,20 @@ const getAllRequests = async (req, res) => {
 // PATCH /api/transport/:id/accept
 const acceptRequest = async (req, res) => {
     try {
-        const request = await TransportRequest.findById(req.params.id);
-        if (!request) return res.status(404).json({ message: 'Request not found' });
+        const requestRef = doc(db, 'transportRequests', req.params.id);
+        const requestSnap = await getDoc(requestRef);
+        if (!requestSnap.exists()) return res.status(404).json({ message: 'Request not found' });
+
         const driver = mockDrivers[Math.floor(Math.random() * mockDrivers.length)];
-        request.status = 'Accepted';
-        request.driverName = driver.driverName;
-        request.vehicleNumber = driver.vehicleNumber;
-        request.eta = driver.eta;
-        await request.save();
-        res.json(request);
+        const updateData = {
+            status: 'Accepted',
+            driverName: driver.driverName,
+            vehicleNumber: driver.vehicleNumber,
+            eta: driver.eta
+        };
+
+        await updateDoc(requestRef, updateData);
+        res.json({ id: requestSnap.id, ...requestSnap.data(), ...updateData });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -62,14 +94,16 @@ const acceptRequest = async (req, res) => {
 // PATCH /api/transport/:id/reject
 const rejectRequest = async (req, res) => {
     try {
-        const request = await TransportRequest.findById(req.params.id);
-        if (!request) return res.status(404).json({ message: 'Request not found' });
-        request.status = 'Rejected';
-        await request.save();
-        res.json(request);
+        const requestRef = doc(db, 'transportRequests', req.params.id);
+        const requestSnap = await getDoc(requestRef);
+        if (!requestSnap.exists()) return res.status(404).json({ message: 'Request not found' });
+
+        await updateDoc(requestRef, { status: 'Rejected' });
+        res.json({ id: requestSnap.id, ...requestSnap.data(), status: 'Rejected' });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
 };
 
 module.exports = { submitRequest, getMyRequests, getAllRequests, acceptRequest, rejectRequest };
+

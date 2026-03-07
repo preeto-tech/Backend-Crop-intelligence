@@ -1,24 +1,27 @@
 const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/auth');
+const {
+  getPosts, getPostById, createPost, deletePost, upvotePost,
+  addAnswer, deleteAnswer, acceptAnswer, upvoteAnswer,
+  pinPost, closePost,
+} = require('../controllers/communityController');
 
-let posts = [];
+// ── Questions ────────────────────────────────────────────────────────────────
+router.get('/', getPosts);          // list / filter / search
+router.get('/:id', getPostById);       // single question + answers
+router.post('/', protect, createPost);
+router.delete('/:id', protect, deletePost);
+router.post('/:id/upvote', protect, upvotePost);
 
-// GET all posts
-router.get('/', (req, res) => {
-  res.json(posts);
-});
+// ── Answers ──────────────────────────────────────────────────────────────────
+router.post('/:id/answers', protect, addAnswer);
+router.delete('/:id/answers/:answerId', protect, deleteAnswer);
+router.patch('/:id/answers/:answerId/accept', protect, acceptAnswer);
+router.post('/:id/answers/:answerId/upvote', protect, upvoteAnswer);
 
-// CREATE post
-router.post('/', protect, (req, res) => {
-  const newPost = {
-    id: posts.length + 1,
-    author: req.user.name,
-    authorId: req.user._id,
-    ...req.body
-  };
-  posts.push(newPost);
-  res.json(newPost);
-});
+// ── Admin / Moderation ───────────────────────────────────────────────────────
+router.patch('/:id/pin', protect, pinPost);
+router.patch('/:id/close', protect, closePost);
 
 module.exports = router;
