@@ -11,7 +11,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
  * @returns {Promise<string>} AI-generated answer text
  */
 async function generateAIExpertAnswer({ title, body, cropName, category }) {
-    const model = genAI.getGenerativeModel({ model: 'gemini-3-flash-preview' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
     const context = cropName ? `The question is related to the crop: "${cropName}".` : '';
     const catCtx = category ? `Category: ${category}.` : '';
@@ -85,4 +85,85 @@ Do not wrap it in markdown code blocks. Just output the raw JSON string.`
     }
 }
 
-module.exports = { generateAIExpertAnswer, parseSellIntent };
+/**
+ * Advanced FarmIQ AI Assistant Chat endpoint.
+ * Supports multilingual text, conversational history, and image (vision) analysis.
+ */
+async function chatWithAI(req, res) {
+    try {
+        const { message, imageBase64, history } = req.body;
+
+        if (!message && !imageBase64) {
+            return res.status(400).json({ message: 'Message or image is required' });
+        }
+
+        // Use gemini-2.5-flash as default, switching from gemini-3 to avoid leaked key issues
+        const model = genAI.getGenerativeModel({
+            model: 'gemini-2.5-flash',
+            systemInstruction: `You are FarmIQ AI, an advanced, highly professional, multilingual agricultural assistant.
+Your goal is to assist farmers with crop management, disease detection, market trends, and general agricultural advice.
+
+Capabilities & Rules:
+1. Multilingual Support: Always respond in the language the user speaks.
+2. Image Analysis (Vision): If the user uploads an image, analyze it carefully to detect diseases or measure health, and provide actionable remedies.
+3. Tone: Professional, empathetic, accurate, and easy to understand for a farmer.
+4. Scope: Limit your answers to agriculture, farming, crop intelligence, logistics, and weather.
+
+WIDGET INSTRUCTIONS:
+To make the UI rich, when you provide specific types of data, ALWAYS wrap them in the following custom tags exactly as shown. 
+
+For Disease Diagnosis (especially from images):
+<WIDGET_DIAGNOSIS>
+Disease: [Name of disease]
+Severity: [Low/Medium/Critical]
+Treatment: [Actionable treatment]
+</WIDGET_DIAGNOSIS>
+
+For Crop/Weather Recommendations:
+<WIDGET_CROP>
+Crop: [Crop Name]
+Season: [Ideal Season]
+Recommendation: [Short advice]
+</WIDGET_CROP>
+
+For standard text, just reply normally. Combine text and widgets logically.`
+        });
+
+        // Initialize chat with optional history. History format: [{role: 'user', parts: [{text: '...'}]}, {role: 'model', ...}]
+        const chat = model.startChat({
+            history: history || []
+        });
+
+        // Construct message parts (handling optional image)
+        const msgParts = [];
+        if (imageBase64) {
+            // Extract mime type and base64 data
+            const mimeTypeMatch = imageBase64.match(/data:(.*?);base64/);
+            const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : 'image/jpeg';
+            const base64Data = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
+
+            msgParts.push({
+                inlineData: {
+                    data: base64Data,
+                    mimeType: mimeType
+                }
+            });
+        }
+
+        if (message) {
+            msgParts.push(message);
+        }
+
+        // Send message and get response
+        const result = await chat.sendMessage(msgParts);
+        const responseText = result.response.text();
+
+        res.json({ reply: responseText });
+
+    } catch (error) {
+        console.error("Error in AI chat:", error);
+        res.status(500).json({ message: 'Failed to process AI chat response', error: error.message });
+    }
+}
+
+module.exports = { generateAIExpertAnswer, parseSellIntent, chatWithAI };
