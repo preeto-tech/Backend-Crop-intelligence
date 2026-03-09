@@ -1,50 +1,62 @@
+const { doc, getDoc, collection, query, where, getDocs } = require('firebase/firestore');
+const { db } = require('../config/firebase');
+
 const getMandiData = async (req, res) => {
     try {
-        const page = req.query.page || 1;
-        const limit = req.query.limit || 30;
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 30;
 
-        // Grab state from query.
-        const stateIdParam = req.query.stateId ? `&state=${req.query.stateId}` : '&state=100006';
+        // Grab state from query. Default to 100006 (Punjab) if not provided.
+        const stateId = req.query.stateId || '100006';
 
-        // Fetch data from Agmarknet API for today's date (or a recent valid date)
-        const url = `https://api.agmarknet.gov.in/v1/dashboard-data/?dashboard=marketwise_price_arrival&date=2026-03-07&group=[100000]&commodity=[100001]&variety=100021${stateIdParam}&district=[100007]&market=[100009]&grades=[4]&page=${page}&limit=${limit}&format=json`;
+        // Fetch data from Firestore cache
+        const mandiPricesRef = collection(db, 'mandi_prices');
+        const q = query(mandiPricesRef, where('state', '==', stateId));
+        const querySnapshot = await getDocs(q);
 
-        const response = await fetch(url, {
-            headers: {
-                'accept': 'application/json, text/plain, */*',
-                'accept-language': 'en-GB,en-US;q=0.9,en;q=0.8',
+        let allRecords = [];
+        querySnapshot.forEach((doc) => {
+            const data = doc.data();
+            if (data.records && Array.isArray(data.records)) {
+                allRecords = data.records;
             }
         });
 
-        if (!response.ok) {
-            throw new Error(`Agmarknet API responded with status: ${response.status}`);
-        }
+        // Pagination logic
+        const startIndex = (page - 1) * limit;
+        const endIndex = page * limit;
+        const paginatedRecords = allRecords.slice(startIndex, endIndex);
 
-        const data = await response.json();
-        res.json(data);
+        // Maintain exact same response structure as Agmarknet API
+        res.json({
+            status: "success",
+            total_records: allRecords.length,
+            page: page,
+            limit: limit,
+            records: paginatedRecords
+        });
     } catch (error) {
-        console.error('Error fetching mandi data:', error);
-        res.status(500).json({ status: 'error', message: 'Failed to fetch mandi data', error: error.message });
+        console.error('Error fetching mandi data from cache:', error);
+        res.status(500).json({ status: 'error', message: 'Failed to fetch mandi data from cache', error: error.message });
     }
 };
 
 const getMandiFilters = async (req, res) => {
     try {
-        const url = 'https://api.agmarknet.gov.in/v1/dashboard-filters/?dashboard_name=marketwise_price_arrival';
-        const response = await fetch(url, {
-            headers: {
-                'accept': 'application/json, text/plain, */*',
-                'accept-language': 'en-GB,en-US;q=0.9,en;q=0.8',
-            }
-        });
-        if (!response.ok) throw new Error(`Status: ${response.status}`);
+        // Fetch filters from Firestore metadata
+        const docRef = doc(db, 'mandi_metadata', 'filters');
+        const docSnap = await getDoc(docRef);
 
-        const data = await response.json();
-        res.json(data);
+        if (docSnap.exists()) {
+            res.json(docSnap.data());
+        } else {
+            res.status(404).json({ status: 'error', message: 'Filters not found in cache' });
+        }
     } catch (error) {
-        console.error('Error fetching mandi filters:', error);
-        res.status(500).json({ status: 'error', message: 'Failed to fetch filters' });
+        console.error('Error fetching mandi filters from cache:', error);
+        res.status(500).json({ status: 'error', message: 'Failed to fetch filters from cache' });
     }
 };
 
 module.exports = { getMandiData, getMandiFilters };
+
