@@ -5,35 +5,48 @@ const getMandiData = async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 30;
-
-        // Grab state from query. Default to 100006 (Punjab) if not provided.
         const stateId = req.query.stateId || '100006';
 
-        // Fetch data from Firestore cache
-        const mandiPricesRef = collection(db, 'mandi_prices');
-        const q = query(mandiPricesRef, where('state', '==', stateId));
-        const querySnapshot = await getDocs(q);
+        // Fetch cached data from Firestore
+        const docRef = doc(db, 'mandi_prices', `state_${stateId}`);
+        const docSnap = await getDoc(docRef);
 
-        let allRecords = [];
-        querySnapshot.forEach((doc) => {
-            const data = doc.data();
-            if (data.records && Array.isArray(data.records)) {
-                allRecords = data.records;
-            }
-        });
+        if (!docSnap.exists()) {
+            return res.json({
+                status: "success",
+                message: "No data found for this state.",
+                pagination: { total_count: 0, total_pages: 0, current_page: page, next_page: null, previous_page: null, items_per_page: limit },
+                data: { columns: [], records: [], count: {} }
+            });
+        }
+
+        const cached = docSnap.data();
+        const allRecords = cached.records || [];
+        const columns = cached.columns || [];
 
         // Pagination logic
+        const totalCount = allRecords.length;
+        const totalPages = Math.ceil(totalCount / limit);
         const startIndex = (page - 1) * limit;
-        const endIndex = page * limit;
-        const paginatedRecords = allRecords.slice(startIndex, endIndex);
+        const paginatedRecords = allRecords.slice(startIndex, startIndex + limit);
 
-        // Maintain exact same response structure as Agmarknet API
+        // Return in exact same structure as the original Agmarknet API
         res.json({
             status: "success",
-            total_records: allRecords.length,
-            page: page,
-            limit: limit,
-            records: paginatedRecords
+            message: "Data fetched successfully.",
+            pagination: {
+                total_count: totalCount,
+                total_pages: totalPages,
+                current_page: page,
+                next_page: page < totalPages ? `page=${page + 1}` : null,
+                previous_page: page > 1 ? `page=${page - 1}` : null,
+                items_per_page: limit,
+            },
+            data: {
+                columns: columns,
+                records: paginatedRecords,
+                count: {},
+            }
         });
     } catch (error) {
         console.error('Error fetching mandi data from cache:', error);
@@ -43,14 +56,13 @@ const getMandiData = async (req, res) => {
 
 const getMandiFilters = async (req, res) => {
     try {
-        // Fetch filters from Firestore metadata
         const docRef = doc(db, 'mandi_metadata', 'filters');
         const docSnap = await getDoc(docRef);
 
         if (docSnap.exists()) {
             res.json(docSnap.data());
         } else {
-            res.status(404).json({ status: 'error', message: 'Filters not found in cache' });
+            res.status(404).json({ status: 'error', message: 'Filters not found in cache. Please run the sync script first.' });
         }
     } catch (error) {
         console.error('Error fetching mandi filters from cache:', error);
@@ -59,4 +71,3 @@ const getMandiFilters = async (req, res) => {
 };
 
 module.exports = { getMandiData, getMandiFilters };
-
